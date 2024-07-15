@@ -1,42 +1,63 @@
 import pandas as pd
+import numpy as np
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
-# Function to load data
-def load_data(file_path):
-    return pd.read_csv(file_path)
-
-
-# Function to filter data by sector
-def filter_by_sector(data, sector):
-    return data[data['Sector'] == sector]
-
-
-# Function to calculate weighted performance score
 def calculate_weighted_score(row, weights):
-    return (weights['SG'] * row['SG'] +
-            weights['EGF1'] * row['EGF1'] +
-            weights['EGF2'] * row['EGF2'])
+    return (weights['SG'] * row['SG-F1'] +
+            weights['EGF1'] * row['EG-F1'] +
+            weights['EGF2'] * row['EG-F2'])
 
 
-# Function to analyze stocks
-def analyze_stocks(data, sector, weights, top_n=5):
-    sector_data = filter_by_sector(data, sector)
+def find_top_stocks(filtered_df, sector, weights, z_threshold, top_percentage, ascending=False):
+    sector_data = filtered_df[filtered_df['Sector'] == sector]
+    sector_data = sector_data[
+        (sector_data['SG-F1_zscore'].abs() <= z_threshold) &
+        (sector_data['EG-F1_zscore'].abs() <= z_threshold) &
+        (sector_data['EG-F2_zscore'].abs() <= z_threshold)
+    ]
+
+    if len(sector_data) == 0:
+        logging.warning(f"No stocks in the {sector} sector meet the z-score threshold.")
+        return pd.DataFrame()
+
     sector_data['WeightedScore'] = sector_data.apply(calculate_weighted_score, axis=1, weights=weights)
-    top_performers = sector_data.sort_values(by='WeightedScore', ascending=False).head(top_n)
-    return top_performers
+
+    top_n = int(len(sector_data) * top_percentage)
+    top_stocks = sector_data.nlargest(top_n, 'WeightedScore') if not ascending else sector_data.nsmallest(top_n, 'WeightedScore')
+    return top_stocks
 
 
-# Main function
 def main():
-    file_path = 'stocks_data.csv'  # Path to the CSV file containing stock data
-    over_performing_sector = 'Technology'  # Example sector
-    weights = {'SG': 0.4, 'EGF1': 0.3, 'EGF2': 0.3}  # Example weights for the indices
+    filtered_stock_data_csv = r"C:\Users\keina\python_stock_screener\filtered_stock_data.csv"
+    sector_averages_csv = r"C:\Users\keina\python_stock_screener\sector_averages.csv"
+    output_csv = r"C:\Users\keina\python_stock_screener\top_stocks_at_xyz_sector.csv"
 
-    data = load_data(file_path)
-    top_stocks = analyze_stocks(data, over_performing_sector, weights)
+    filtered_df = pd.read_csv(filtered_stock_data_csv)
+    sector_averages = pd.read_csv(sector_averages_csv)
 
-    print("Top Performing Stocks in the Over-Performing Sector:")
-    print(top_stocks)
+    print("Available sectors and the number of stocks:")
+    print(filtered_df['Sector'].value_counts())
+
+    sector = input("Enter the sector you want to analyze: ")
+    z_threshold = float(input("Enter the z-score threshold: "))
+    top_percentage = float(input("Enter the top percentage (in decimal form, e.g., 0.1 for 10%): "))
+    analysis_type = input("Enter 'long' for top-performing stocks or 'short' for worst-performing stocks: ").strip().lower()
+
+    weights = {'SG': 0.4, 'EGF1': 0.3, 'EGF2': 0.3}
+    ascending = True if analysis_type == 'short' else False
+
+    top_stocks = find_top_stocks(filtered_df, sector, weights, z_threshold, top_percentage, ascending)
+
+    if top_stocks.empty:
+        logging.warning("No stocks found based on the criteria.")
+        return
+
+    top_stocks['Type'] = 'Short' if ascending else 'Long'
+    top_stocks.to_csv(output_csv, index=False)
+    logging.info(f"Stocks analysis result saved to {output_csv}")
 
 
 if __name__ == "__main__":

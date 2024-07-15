@@ -59,12 +59,14 @@ def process_stock_data(input_csv, filtered_stock_data_csv, output_99_csv, output
 
     df_filtered = df[~df.index.isin(df_99.index) & ~df.index.isin(df_neg99.index) & ~df.index.isin(df_neg100.index)]
 
-    def calculate_sector_zscores(group):
+    def calculate_robust_zscores(group):
         for column in numeric_columns:
-            group[f'{column}_zscore'] = zscore(group[column])
+            median = group[column].median()
+            iqr = group[column].quantile(0.75) - group[column].quantile(0.25)
+            group[f'{column}_zscore'] = (group[column] - median) / iqr
         return group
 
-    df_grouped = df_filtered.groupby('Sector', as_index=False).apply(calculate_sector_zscores)
+    df_grouped = df_filtered.groupby('Sector', as_index=False, group_keys=False).apply(calculate_robust_zscores)
 
     filtered_df = df_grouped[
         (df_grouped['SG-F1_zscore'].abs() <= 3) &
@@ -77,44 +79,37 @@ def process_stock_data(input_csv, filtered_stock_data_csv, output_99_csv, output
         logging.warning("No data remaining after filtering outliers.")
         return
 
-    sector_averages = filtered_df.groupby('Sector')[numeric_columns].mean()
+    sector_averages = filtered_df.groupby('Sector')[numeric_columns].mean().reset_index()
 
     try:
         filtered_df.to_csv(filtered_stock_data_csv, index=False)
         df_99.to_csv(output_99_csv, index=False)
         df_neg99.to_csv(output_neg99_csv, index=False)
         df_neg100.to_csv(output_neg100_csv, index=False)
-        sector_averages.to_csv(sector_averages_csv)
+        sector_averages.to_csv(sector_averages_csv, index=False)
     except Exception as e:
         logging.error(f"Error writing to CSV files: {e}")
         return
 
-    return filtered_df
+    return sector_averages
 
 
-def calculate_weighted_score(row, weights):
-    return (weights['SG'] * row['SG-F1'] +
-            weights['EGF1'] * row['EG-F1'] +
-            weights['EGF2'] * row['EG-F2'])
+def apply_coloring(df):
+    def color_cells(val, avg, min_val):
+        if val > avg:
+            return 'background-color: green'
+        elif val == min_val:
+            return 'background-color: red'
+        return ''
 
+    avg_values = df.mean(numeric_only=True)
+    min_values = df.min(numeric_only=True)
 
-def find_top_stocks(filtered_df, sector, weights, z_threshold=1.2, top_percentage=0.1, ascending=False):
-    sector_data = filtered_df[filtered_df['Sector'] == sector]
-    sector_data = sector_data[
-        (sector_data['SG-F1_zscore'].abs() <= z_threshold) &
-        (sector_data['EG-F1_zscore'].abs() <= z_threshold) &
-        (sector_data['EG-F2_zscore'].abs() <= z_threshold)
-    ]
+    styled_df = df.style.applymap(lambda x: color_cells(x, avg_values['SG-F1'], min_values['SG-F1']), subset=['SG-F1'])
+    styled_df = styled_df.applymap(lambda x: color_cells(x, avg_values['EG-F1'], min_values['EG-F1']), subset=['EG-F1'])
+    styled_df = styled_df.applymap(lambda x: color_cells(x, avg_values['EG-F2'], min_values['EG-F2']), subset=['EG-F2'])
 
-    if len(sector_data) == 0:
-        logging.warning(f"No stocks in the {sector} sector meet the z-score threshold.")
-        return pd.DataFrame()
-
-    sector_data['WeightedScore'] = sector_data.apply(calculate_weighted_score, axis=1, weights=weights)
-
-    top_n = int(len(sector_data) * top_percentage)
-    top_stocks = sector_data.nlargest(top_n, 'WeightedScore') if not ascending else sector_data.nsmallest(top_n, 'WeightedScore')
-    return top_stocks
+    return styled_df
 
 
 def main():
@@ -124,55 +119,17 @@ def main():
     output_neg99_csv = r"C:\Users\keina\python_stock_screener\stocks_neg99.csv"
     output_neg100_csv = r"C:\Users\keina\python_stock_screener\stocks_neg100.csv"
     sector_averages_csv = r"C:\Users\keina\python_stock_screener\sector_averages.csv"
-    top_stocks_output_csv = r"C:\Users\keina\python_stock_screener\top_10_percent_stocks.csv"
+    sector_averages_colored_excel = r"C:\Users\keina\python_stock_screener\sector_averages_colored.xlsx"
 
-    filtered_df = process_stock_data(input_csv, filtered_stock_data_csv, output_99_csv, output_neg99_csv, output_neg100_csv, sector_averages_csv)
+    sector_averages = process_stock_data(input_csv, filtered_stock_data_csv, output_99_csv, output_neg99_csv, output_neg100_csv, sector_averages_csv)
 
-    if filtered_df is None:
+    if sector_averages is None:
         logging.error("Processing stock data failed.")
         return
 
-    sector_averages = filtered_df.groupby('Sector')['F1 Consensus Est.'].mean()
-
-    n_top_sectors = 3
-    n_bottom_sectors = 2
-    top_percentage = 0.1
-    weights = {'SG': 0.4, 'EGF1': 0.3, 'EGF2': 0.3}
-    z_threshold = 1.2
-
-    top_sectors = sector_averages.nlargest(n_top_sectors).index.tolist()
-    bottom_sectors = sector_averages.nsmallest(n_bottom_sectors).index.tolist()
-
-    all_top_stocks = []
-    all_bottom_stocks = []
-
-    for sector in top_sectors:
-        logging.info(f"\nAnalyzing top sector: {sector}")
-        top_stocks = find_top_stocks(filtered_df, sector, weights, z_threshold, top_percentage, ascending=False)
-        top_stocks['Sector'] = sector
-        top_stocks['Type'] = 'Long'
-        all_top_stocks.append(top_stocks)
-
-    for sector in bottom_sectors:
-        logging.info(f"\nAnalyzing bottom sector: {sector}")
-        bottom_stocks = find_top_stocks(filtered_df, sector, weights, z_threshold, top_percentage, ascending=True)
-        bottom_stocks['Sector'] = sector
-        bottom_stocks['Type'] = 'Short'
-        all_bottom_stocks.append(bottom_stocks)
-
-    final_top_stocks = pd.concat(all_top_stocks)
-    final_bottom_stocks = pd.concat(all_bottom_stocks)
-    final_stocks = pd.concat([final_top_stocks, final_bottom_stocks])
-
-    if final_stocks.empty:
-        logging.warning("No top or bottom stocks found.")
-        return
-
-    try:
-        final_stocks.to_csv(top_stocks_output_csv, index=False)
-        logging.info(f"Top and bottom performing stocks saved to {top_stocks_output_csv}")
-    except Exception as e:
-        logging.error(f"Error writing to {top_stocks_output_csv}: {e}")
+    styled_averages = apply_coloring(sector_averages)
+    styled_averages.to_excel(sector_averages_colored_excel, engine='openpyxl', index=False)
+    logging.info(f"Sector averages with coloring saved to {sector_averages_colored_excel}")
 
 
 if __name__ == "__main__":
