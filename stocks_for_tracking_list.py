@@ -46,7 +46,7 @@ def main():
     top_percentage = float(input("Enter the top percentage (in decimal form, e.g., 0.1 for 10%): "))
     analysis_type = input("Enter 'long' for top-performing stocks or 'short' for worst-performing stocks: ").strip().lower()
 
-    weights = {'SG': 0.4, 'EGF1': 0.3, 'EGF2': 0.3}
+    weights = {'SG': 0.5, 'EGF1': 0.3, 'EGF2': 0.2}
     ascending = True if analysis_type == 'short' else False
 
     top_stocks = find_top_stocks(filtered_df, sector, weights, z_threshold, top_percentage, ascending)
