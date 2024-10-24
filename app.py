@@ -9,8 +9,18 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 # Clean percentage values
 def clean_percentage_column(column):
-    return column.astype(str).str.replace(r'[^\d.-]', '', regex=True).astype(float)
+    def try_parse_float(value):
+        try:
+            # Remove any non-numeric characters, handle scientific notation
+            cleaned_value = re.sub(r'[^\d.eE+-]', '', str(value))  # Allow digits, '.' and scientific notation 'e' or 'E'
+            return float(cleaned_value)
+        except ValueError:
+            # Log or handle any conversion errors and return None for invalid entries
+            logging.warning(f"Could not convert value to float: {value}")
+            return None
 
+    # Apply the try_parse_float function to each element in the column
+    return column.apply(try_parse_float)
 
 # Calculate SG-F1, EG-F1, and EG-F2 based on the provided formulas
 def calculate_new_columns(df):
@@ -111,7 +121,6 @@ def process_stock_data(df):
 
     return filtered_df, df_99, df_neg99, df_neg100, sector_averages, df_extreme
 
-
 # Streamlit app layout
 st.title("Stock Data Processor")
 
@@ -125,13 +134,21 @@ if uploaded_file:
     filtered_df, df_99, df_neg99, df_neg100, sector_averages, df_extreme = process_stock_data(df)
 
     if filtered_df is not None:
-        st.write("Filtered Data", filtered_df)
-        st.write("Sector Averages", sector_averages)
+        # Display formatted as percentage without multiplying by 100
+        st.write("Filtered Data", filtered_df.style.format({
+            'SG-F1': "{:.2%}",  # Format as percentage without changing the value
+            'EG-F1': "{:.2%}",
+            'EG-F2': "{:.2%}"
+        }))
+        st.write("Sector Averages", sector_averages.style.format({
+            'SG-F1': "{:.2%}",
+            'EG-F1': "{:.2%}",
+            'EG-F2': "{:.2%}"
+        }))
         st.write("Stocks with EG-F1, SG-F1, or EG-F2 = 99", df_99)
         st.write("Stocks with EG-F1, SG-F1, or EG-F2 = -99", df_neg99)
         st.write("Stocks with EG-F1, SG-F1, or EG-F2 = -100", df_neg100)
         st.write("Extreme Z-Score Stocks", df_extreme)
-
 
         # Download options
         def download_button(label, dataframe, file_name):
@@ -141,7 +158,6 @@ if uploaded_file:
                 file_name=file_name,
                 mime='text/csv'
             )
-
 
         download_button("Download Filtered Data", filtered_df, 'filtered_data.csv')
         download_button("Download Sector Averages", sector_averages, 'sector_averages.csv')
