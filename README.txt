@@ -1,65 +1,101 @@
 # Stock Screening Project
+---
 
-## Overview
-This project is designed to process stock data, filter out outliers, calculate sector averages, and perform stock analysis based on specified criteria. The project generates various outputs, including filtered stock data, sector averages, and top-performing stocks, all saved in CSV and Excel formats.
+# Stock Data Processor
 
-## Input File Structure
-The input CSV file should contain the following columns:
+This is a Python-based application that processes stock data, calculates specific growth and estimate metrics (`SG-F1`, `EG-F1`, `EG-F2`), and allows users to interact with the results via a Streamlit web interface.
+ The app supports uploading stock data in CSV format, performs calculations based on predefined formulas, and provides downloadable reports of filtered results.
 
-- `Company Name`: Name of the company
-- `Ticker`: Stock ticker symbol
-- `Market Cap (mil)`: Market capitalization in millions
-- `Sector`: Sector to which the company belongs
-- `Industry`: Industry to which the company belongs
-- `Exchange`: Stock exchange where the company is listed
-- `Month of Fiscal Yr End`: Month of the fiscal year end
-- `F0 Consensus Est.`: Current fiscal year consensus estimate
-- `F1 Consensus Est.`: Next fiscal year consensus estimate
-- `F2 Consensus Est.`: Following fiscal year consensus estimate
-- `Annual Sales ($mil)`: Annual sales in millions
-- `F(1) Consensus Sales Est. ($mil)`: Next fiscal year's consensus sales estimate in millions
-- `SG-F1`: Sales growth forecast for the next fiscal year
-- `EG-F1`: Earnings growth forecast for the next fiscal year
-- `EG-F2`: Earnings growth forecast for the following fiscal year
+## Features
 
-I used Zacks stock screener to do so. Note that the order matters.
-
-## Output Files
-1. `filtered_stock_data.csv`: Contains the filtered stock data after removing outliers.
-2. `stocks_99.csv`: Contains stocks with specific values (99).
-3. `stocks_neg99.csv`: Contains stocks with specific negative values (-99).
-4. `stocks_neg100.csv`: Contains stocks with specific negative values (-100).
-5. `sector_averages.csv`: Contains the average growth expectations for each sector.
-6. `sector_averages_colored.xlsx`: Contains the sector averages with applied coloring rules for better visualization
-(Above average: green, Minimal: red).
-7. `top_stocks_at_xyz_sector.csv`: Contains the top stocks at a sector, given the z-score that you able to "tolerate"
-and the percentage of the sector that you want to take.
-
-## Filtering Criteria
-The project filters the stock data based on the following criteria:
-- Removes rows where `SG-F1`, `EG-F1`, or `EG-F2` have specific values (99, -99, -100).
-- Filters out rows where `SG-F1`, `EG-F1`, or `EG-F2` have NaN values.
-- Applies robust z-score filtering to remove outliers based on a threshold (z-score > 3).
-
-## Calculations
-The project performs the following calculations:
-1. **Robust Z-scores**: Calculates z-scores for `SG-F1`, `EG-F1`, and `EG-F2` using median and interquartile range (IQR) for robust scaling.
-2. **Sector Averages**: Calculates the average values for `SG-F1`, `EG-F1`, and `EG-F2` for each sector.
-3. **Weighted Scores**: Calculates a weighted score for each stock based on `SG-F1`, `EG-F1`, and `EG-F2` using specified weights.
-
-## Analysis
-The project performs stock analysis based on user-specified criteria:
-- Filters and ranks stocks within a selected sector based on a z-score threshold and top percentage.
-- Colors cells green if they exceed the average values and red if they are the minimum in their respective columns.
+- **Flexible Data Input**: The application accepts CSV files with varying column order and dynamically detects necessary fields.
+- **Calculations**:
+  - `SG-F1`: Sales growth formula.
+  - `EG-F1`: Earnings growth estimate between two fiscal periods (`F0` to `F1`).
+  - `EG-F2`: Earnings growth estimate between two fiscal periods (`F1` to `F2`).
+- **Outlier Filtering**: Automatically filters out stocks with extreme z-scores for the calculated metrics and removes invalid or missing data.
+- **Downloadable Reports**: Provides options to download the following datasets:
+  - Filtered stocks based on outliers.
+  - Stocks with specific extreme values (`99`, `-99`, or `-100`).
+  - Sector averages for the calculated metrics.
+  - Stocks with extreme z-scores.
 
 ## Usage
-1. **Script 1: Determine Best Performing Sectors**
-   - Processes the stock data, filters out outliers, calculates sector averages, and saves the results.
-   - Command to run: `python best_performance_sector.py`
-   - Input: CSV file with the structure mentioned above.
-   - Outputs: Filtered stock data, sector averages, and other intermediate files.
 
-2. **Script 2: Analyze Stocks in a Selected Sector**
+1. **Upload CSV File**:
+   - The application requires a CSV file as input. The file should contain the following columns (in any order):
+     - `Company Name`
+     - `Ticker`
+     - `Market Cap (mil)`
+     - `Sector`
+     - `Industry`
+     - `Exchange`
+     - `Month of Fiscal Yr End`
+     - `F0 Consensus Est.`
+     - `F1 Consensus Est.`
+     - `F2 Consensus Est.`
+     - `Annual Sales ($mil)`
+     - `F(1) Consensus Sales Est. ($mil)`
+
+2. **Process Data**:
+   - Once the file is uploaded, the application will automatically:
+     - Detect the necessary columns regardless of their order.
+     - Perform calculations for `SG-F1`, `EG-F1`, and `EG-F2` based on the provided formulas.
+     - Filter out stocks with invalid or missing values necessary for the calculations.
+     - Calculate sector-wise averages and perform outlier detection using z-scores.
+
+3. **Download Results**:
+   - After processing, you can download the following datasets:
+     - Filtered stock data (removing extreme outliers).
+     - Stocks with specific flag values (`99`, `-99`, `-100`).
+     - Sector averages.
+     - Stocks with extreme z-scores.
+
+## Calculation Formulas
+
+The following formulas are used to compute the stock metrics:
+
+- **SG-F1** (Sales Growth):
+  Formula:
+  ```python
+  SG-F1 = (F(1) Consensus Sales Est. ($mil) / Annual Sales ($mil)) - 1
+  ```
+
+- **EG-F1** (Earnings Growth for F0 → F1):
+  Formula:
+  ```python
+  EG-F1 = IF(F0 < 0, IF(F1 > 0, 99, -99), IF(F0 > 0, IF(F1 < 0, -99, F1/F0 - 1), F1/F0 - 1))
+  ```
+
+- **EG-F2** (Earnings Growth for F1 → F2):
+  Formula:
+  ```python
+  EG-F2 = IF(F1 < 0, IF(F2 > 0, 99, -99), IF(F1 > 0, IF(F2 < 0, -99, F2/F1 - 1), F2/F1 - 1))
+  ```
+
+## Error Handling
+
+- The application logs errors and warnings during data processing. For example, if certain fields cannot be converted to numeric values, the row will be excluded from the analysis, and a warning will be logged.
+
+## Known Limitations
+
+- **Division by Zero**: The application filters out stocks where a division by zero would occur during calculations for `SG-F1`, `EG-F1`, or `EG-F2`.
+- **Missing Data**: Rows with missing values for key columns (`F0`, `F1`, `F2`, `Annual Sales`, etc.) are automatically dropped from the analysis.
+
+## Example
+
+Here’s how the application looks when displaying results in Streamlit:
+
+1. **Uploaded CSV Data**:
+   - Displays the original data uploaded in CSV format.
+
+2. **Processed Data**:
+   - Shows the calculated values for `SG-F1`, `EG-F1`, and `EG-F2` formatted as percentages.
+
+3. **Download Options**:
+   - Provides buttons to download the filtered data, sector averages, and more.
+
+4. **Script 2: Analyze Stocks in a Selected Sector**
    - Prompts the user for sector analysis criteria and performs the analysis.
    - Command to run: `python analyze_stocks.py`
    - Inputs: Filtered stock data CSV file and sector averages CSV file.
