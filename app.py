@@ -22,17 +22,29 @@ def calculate_new_columns(df):
         f1_est_col = df.columns[df.columns.str.contains('F1 Consensus Est', case=False, regex=False)][0]
         f2_est_col = df.columns[df.columns.str.contains('F2 Consensus Est', case=False, regex=False)][0]
 
+        # Filter out rows with missing or zero values necessary for the calculations
+        df = df.dropna(subset=[f1_sales_est_col, annual_sales_col, f0_est_col, f1_est_col, f2_est_col])
+        df = df[(df[f0_est_col] != 0) & (df[f1_est_col] != 0) & (df[annual_sales_col] != 0)]
+
         # Apply the formulas for SG-F1, EG-F1, EG-F2
         df['SG-F1'] = df[f1_sales_est_col] / df[annual_sales_col] - 1
-        df['EG-F1'] = df.apply(lambda row: 99 if row[f0_est_col] < 0 and row[f1_est_col] > 0 else (
-            -99 if row[f0_est_col] < 0 and row[f1_est_col] <= 0 else (
-                -99 if row[f0_est_col] > 0 and row[f1_est_col] < 0 else row[f1_est_col] / row[f0_est_col] - 1)), axis=1)
-        df['EG-F2'] = df.apply(lambda row: 99 if row[f1_est_col] < 0 and row[f2_est_col] > 0 else (
-            -99 if row[f1_est_col] < 0 and row[f2_est_col] <= 0 else (
-                -99 if row[f1_est_col] > 0 and row[f2_est_col] < 0 else row[f2_est_col] / row[f1_est_col] - 1)), axis=1)
+
+        df['EG-F1'] = df.apply(
+            lambda row: 99 if row[f0_est_col] < 0 and row[f1_est_col] > 0 else (
+                -99 if row[f0_est_col] < 0 and row[f1_est_col] <= 0 else (
+                    -99 if row[f0_est_col] > 0 and row[f1_est_col] < 0 else row[f1_est_col] / row[f0_est_col] - 1)),
+            axis=1)
+
+        df['EG-F2'] = df.apply(
+            lambda row: 99 if row[f1_est_col] < 0 and row[f2_est_col] > 0 else (
+                -99 if row[f1_est_col] < 0 and row[f2_est_col] <= 0 else (
+                    -99 if row[f1_est_col] > 0 and row[f2_est_col] < 0 else row[f2_est_col] / row[f1_est_col] - 1)),
+            axis=1)
+
     except KeyError as e:
         st.error(f"Missing necessary columns to calculate SG-F1, EG-F1, and EG-F2: {str(e)}")
         return None
+
     return df
 
 
