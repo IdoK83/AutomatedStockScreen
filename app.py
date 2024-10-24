@@ -6,9 +6,35 @@ import logging
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+
 # Clean percentage values
 def clean_percentage_column(column):
     return column.astype(str).str.replace(r'[^\d.-]', '', regex=True).astype(float)
+
+
+# Calculate SG-F1, EG-F1, and EG-F2 based on the provided formulas
+def calculate_new_columns(df):
+    # Find the necessary columns dynamically by their names
+    try:
+        annual_sales_col = df.columns[df.columns.str.contains('Annual Sales', case=False, regex=False)][0]
+        f1_sales_est_col = df.columns[df.columns.str.contains('F\(1\) Consensus Sales Est', case=False, regex=True)][0]
+        f0_est_col = df.columns[df.columns.str.contains('F0 Consensus Est', case=False, regex=False)][0]
+        f1_est_col = df.columns[df.columns.str.contains('F1 Consensus Est', case=False, regex=False)][0]
+        f2_est_col = df.columns[df.columns.str.contains('F2 Consensus Est', case=False, regex=False)][0]
+
+        # Apply the formulas for SG-F1, EG-F1, EG-F2
+        df['SG-F1'] = df[f1_sales_est_col] / df[annual_sales_col] - 1
+        df['EG-F1'] = df.apply(lambda row: 99 if row[f0_est_col] < 0 and row[f1_est_col] > 0 else (
+            -99 if row[f0_est_col] < 0 and row[f1_est_col] <= 0 else (
+                -99 if row[f0_est_col] > 0 and row[f1_est_col] < 0 else row[f1_est_col] / row[f0_est_col] - 1)), axis=1)
+        df['EG-F2'] = df.apply(lambda row: 99 if row[f1_est_col] < 0 and row[f2_est_col] > 0 else (
+            -99 if row[f1_est_col] < 0 and row[f2_est_col] <= 0 else (
+                -99 if row[f1_est_col] > 0 and row[f2_est_col] < 0 else row[f2_est_col] / row[f1_est_col] - 1)), axis=1)
+    except KeyError as e:
+        st.error(f"Missing necessary columns to calculate SG-F1, EG-F1, and EG-F2: {str(e)}")
+        return None
+    return df
+
 
 # Process stock data
 def process_stock_data(df):
@@ -16,7 +42,7 @@ def process_stock_data(df):
         'Company Name', 'Ticker', 'Market Cap (mil)', 'Sector', 'Industry',
         'Exchange', 'Month of Fiscal Yr End', 'F0 Consensus Est.',
         'F1 Consensus Est.', 'F2 Consensus Est.', 'Annual Sales ($mil)',
-        'F(1) Consensus Sales Est. ($mil)', 'SG-F1', 'EG-F1', 'EG-F2'
+        'F(1) Consensus Sales Est. ($mil)'
     ]
 
     # Check if all required columns are present
@@ -29,16 +55,14 @@ def process_stock_data(df):
     df = df[df['Exchange'].isin(['NSDQ', 'NYSE'])]
 
     # Clean numeric columns
+    df = calculate_new_columns(df)
+    if df is None:
+        return None, None, None, None, None, None
+
     numeric_columns = ['SG-F1', 'EG-F1', 'EG-F2']
     df[numeric_columns] = df[numeric_columns].apply(clean_percentage_column)
 
     df = df.dropna(subset=numeric_columns)
-
-    # Helper function to filter outliers
-    def filter_outliers(value):
-        if value in [99, -99, -100]:
-            return value
-        return None
 
     # Filter rows with outliers
     df_99 = df[df[numeric_columns].isin([99]).any(axis=1)]
@@ -62,18 +86,19 @@ def process_stock_data(df):
         (df_grouped['SG-F1_zscore'].abs() > 3) |
         (df_grouped['EG-F1_zscore'].abs() > 3) |
         (df_grouped['EG-F2_zscore'].abs() > 3)
-    ]
+        ]
 
     # Filtered dataframe excluding extreme stocks
     filtered_df = df_grouped[
         (df_grouped['SG-F1_zscore'].abs() <= 3) &
         (df_grouped['EG-F1_zscore'].abs() <= 3) &
         (df_grouped['EG-F2_zscore'].abs() <= 3)
-    ]
+        ]
 
     sector_averages = filtered_df.groupby('Sector')[numeric_columns].mean().reset_index()
 
     return filtered_df, df_99, df_neg99, df_neg100, sector_averages, df_extreme
+
 
 # Streamlit app layout
 st.title("Stock Data Processor")
@@ -95,6 +120,7 @@ if uploaded_file:
         st.write("Stocks with EG-F1, SG-F1, or EG-F2 = -100", df_neg100)
         st.write("Extreme Z-Score Stocks", df_extreme)
 
+
         # Download options
         def download_button(label, dataframe, file_name):
             st.download_button(
@@ -103,6 +129,7 @@ if uploaded_file:
                 file_name=file_name,
                 mime='text/csv'
             )
+
 
         download_button("Download Filtered Data", filtered_df, 'filtered_data.csv')
         download_button("Download Sector Averages", sector_averages, 'sector_averages.csv')
