@@ -184,29 +184,6 @@ st.title("Stock Data Processor")
 # Display the instructions to the user
 display_instructions()
 
-# Rest of the app code for CSV file upload and processing
-uploaded_file = st.file_uploader("Upload a CSV file", type="csv")
-
-if uploaded_file:
-    df = pd.read_csv(uploaded_file)
-    st.write("Original Data", df)
-
-    # Process the uploaded data (using your existing functions)
-    # Assume the process_stock_data and other helper functions are here
-
-# Rest of the app code for CSV file upload and processing
-uploaded_file = st.file_uploader("Upload a CSV file", type="csv")
-
-if uploaded_file:
-    df = pd.read_csv(uploaded_file)
-    st.write("Original Data", df)
-
-    # Process the uploaded data (using your existing functions)
-    # Assume the process_stock_data and other helper functions are here
-
-# Streamlit app layout
-st.title("Stock Data Processor")
-
 uploaded_file = st.file_uploader("Upload a CSV file", type="csv")
 
 if uploaded_file:
