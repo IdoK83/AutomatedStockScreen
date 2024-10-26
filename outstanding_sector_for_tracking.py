@@ -158,6 +158,21 @@ def display_instructions():
     - **Weighted Scoring**: Allows users to score stocks within a selected sector using custom weights and strategies (Long/Short).
     - **Downloadable Reports**: Provides filtered datasets, sector averages, and scored sector analysis as CSV files.
 
+    **Required Columns:**
+    The app expects a CSV file with the following columns:
+    - `Company Name`: The name of the company.
+    - `Ticker`: The stock ticker symbol.
+    - `Market Cap (mil)`: The market capitalization in millions.
+    - `Sector`: The sector to which the company belongs.
+    - `Industry`: The industry to which the company belongs.
+    - `Exchange`: The stock exchange (e.g., NSDQ, NYSE).
+    - `Month of Fiscal Yr End`: The month the fiscal year ends.
+    - `F0 Consensus Est.`: Consensus estimate for fiscal year 0 (F0).
+    - `F1 Consensus Est.`: Consensus estimate for fiscal year 1 (F1).
+    - `F2 Consensus Est.`: Consensus estimate for fiscal year 2 (F2).
+    - `Annual Sales ($mil)`: Annual sales in millions of dollars.
+    - `F(1) Consensus Sales Est. ($mil)`: Consensus sales estimate for fiscal year 1.
+
     **Filtering Process:**
     - **Flagged Values** (`99` and `-99`) are excluded to ensure data accuracy.
     - **Outlier Detection**: Uses z-scores to remove stocks with extreme values, filtering out any with absolute z-scores above 3.
