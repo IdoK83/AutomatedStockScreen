@@ -11,6 +11,54 @@ RELEVANT_EXCHANGES = ['NSDQ', 'NYSE']
 NUMERIC_COLUMNS = ['SG-F1', 'EG-F1', 'EG-F2']
 
 
+# Function to display instructions for the user
+def display_instructions():
+    st.subheader("Instructions for Use")
+
+    st.markdown("""
+    ### Welcome to the Stock Data Processor & Sector Analysis Tool!
+
+    This application processes stock data by calculating growth metrics, filtering outliers, and analyzing specific sectors based on user-defined criteria.
+
+    **Features:**
+    - **Growth Metrics Calculation**: Computes `SG-F1`, `EG-F1`, and `EG-F2` to evaluate sales and earnings growth.
+    - **Flagged Value Filtering**: Excludes stocks with flagged values (`99`, `-99`).
+    - **Outlier Removal**: Removes extreme outliers using z-scores, retaining only stocks within a 3-sigma range for sector averages.
+    - **Weighted Scoring**: Allows users to score stocks within a selected sector using custom weights and strategies (Long/Short).
+    - **Downloadable Reports**: Provides filtered datasets, sector averages, and scored sector analysis as CSV files.
+
+    **Required Columns:**
+    The app expects a CSV file with the following columns:
+    - `Company Name`: The name of the company.
+    - `Ticker`: The stock ticker symbol.
+    - `Market Cap (mil)`: The market capitalization in millions.
+    - `Sector`: The sector to which the company belongs.
+    - `Industry`: The industry to which the company belongs.
+    - `Exchange`: The stock exchange (e.g., NSDQ, NYSE).
+    - `Month of Fiscal Yr End`: The month the fiscal year ends.
+    - `F0 Consensus Est.`: Consensus estimate for fiscal year 0 (F0).
+    - `F1 Consensus Est.`: Consensus estimate for fiscal year 1 (F1).
+    - `F2 Consensus Est.`: Consensus estimate for fiscal year 2 (F2).
+    - `Annual Sales ($mil)`: Annual sales in millions of dollars.
+    - `F(1) Consensus Sales Est. ($mil)`: Consensus sales estimate for fiscal year 1.
+
+    **Filtering Process:**
+    - **Flagged Values** (`99` and `-99`) are excluded to ensure data accuracy.
+    - **Outlier Detection**: Uses z-scores to remove stocks with extreme values, filtering out any with absolute z-scores above 3.
+    - **Sector Averages**: Calculated only from filtered stocks, excluding flagged and extreme outliers.
+
+    **How to Use the App:**
+    1. Upload a CSV file with the required columns.
+    2. Review filtered data, flagged stocks, and sector averages.
+    3. Select a sector and analysis type (Long/Short), then set custom weights for growth metrics.
+    4. Generate scored sector data and download all outputs as needed.
+
+    ### Source Code:
+    Access the full source code for this project on GitHub:
+    [AutomatedStockScreen GitHub Repository](https://github.com/IdoK83/AutomatedStockScreen)
+    """)
+
+
 # Utility Functions
 def clean_percentage_column(column):
     """Cleans a numeric column by converting values to floats and handling scientific notation."""
@@ -63,6 +111,11 @@ def calc_growth(fiscal0, fiscal1):
         return fiscal1 / fiscal0 - 1
 
 
+def filter_by_exchange(df):
+    """Filters out stocks that are not from the required exchanges."""
+    return df[df['Exchange'].isin(RELEVANT_EXCHANGES)]
+
+
 def filter_stocks(df):
     """Separates valid stocks and flagged stocks (99 and -99) for independent analysis."""
     # Filter out flagged stocks
@@ -105,25 +158,13 @@ def calculate_weighted_score(row, weights):
 
 def score_sector_stocks(filtered_df, sector, weights, ascending=False):
     """Scores stocks within the selected sector based on the weighted score."""
-    # Filter for the selected sector
     sector_data = filtered_df[filtered_df['Sector'] == sector]
     if len(sector_data) == 0:
         st.warning(f"No stocks found in the {sector} sector.")
         return pd.DataFrame()
 
-    # Calculate the weighted score for each stock
-    sector_data['WeightedScore'] = sector_data.apply(
-        lambda row: (
-                weights['SG'] * row['SG-F1'] +
-                weights['EGF1'] * row['EG-F1'] +
-                weights['EGF2'] * row['EG-F2']
-        ), axis=1
-    )
-
-    # Sort by WeightedScore in either ascending or descending order
+    sector_data['WeightedScore'] = sector_data.apply(calculate_weighted_score, axis=1, weights=weights)
     sector_data = sector_data.sort_values('WeightedScore', ascending=ascending)
-
-    # Add ranking column based on score order
     sector_data['Rank'] = range(1, len(sector_data) + 1)
 
     return sector_data
@@ -131,6 +172,7 @@ def score_sector_stocks(filtered_df, sector, weights, ascending=False):
 
 # Main processing function
 def process_stock_data(df):
+    df = filter_by_exchange(df)  # Only keep stocks from required exchanges
     df = calculate_growth_metrics(df)
     if df is None:
         return None, None, None
@@ -142,58 +184,13 @@ def process_stock_data(df):
         valid_stocks)  # Calculate sector averages based on z-score filtered stocks
     return valid_stocks, flagged_stocks, sector_averages
 
-# Function to display instructions for the user
-def display_instructions():
-    st.subheader("Instructions for Use")
-
-    st.markdown("""
-    ### Welcome to the Stock Data Processor & Sector Analysis Tool!
-
-    This application processes stock data by calculating growth metrics, filtering outliers, and analyzing specific sectors based on user-defined criteria.
-
-    **Features:**
-    - **Growth Metrics Calculation**: Computes `SG-F1`, `EG-F1`, and `EG-F2` to evaluate sales and earnings growth.
-    - **Flagged Value Filtering**: Excludes stocks with flagged values (`99`, `-99`).
-    - **Outlier Removal**: Removes extreme outliers using z-scores, retaining only stocks within a 3-sigma range for sector averages.
-    - **Weighted Scoring**: Allows users to score stocks within a selected sector using custom weights and strategies (Long/Short).
-    - **Downloadable Reports**: Provides filtered datasets, sector averages, and scored sector analysis as CSV files.
-
-    **Required Columns:**
-    The app expects a CSV file with the following columns:
-    - `Company Name`: The name of the company.
-    - `Ticker`: The stock ticker symbol.
-    - `Market Cap (mil)`: The market capitalization in millions.
-    - `Sector`: The sector to which the company belongs.
-    - `Industry`: The industry to which the company belongs.
-    - `Exchange`: The stock exchange (e.g., NSDQ, NYSE).
-    - `Month of Fiscal Yr End`: The month the fiscal year ends.
-    - `F0 Consensus Est.`: Consensus estimate for fiscal year 0 (F0).
-    - `F1 Consensus Est.`: Consensus estimate for fiscal year 1 (F1).
-    - `F2 Consensus Est.`: Consensus estimate for fiscal year 2 (F2).
-    - `Annual Sales ($mil)`: Annual sales in millions of dollars.
-    - `F(1) Consensus Sales Est. ($mil)`: Consensus sales estimate for fiscal year 1.
-
-    **Filtering Process:**
-    - **Flagged Values** (`99` and `-99`) are excluded to ensure data accuracy.
-    - **Outlier Detection**: Uses z-scores to remove stocks with extreme values, filtering out any with absolute z-scores above 3.
-    - **Sector Averages**: Calculated only from filtered stocks, excluding flagged and extreme outliers.
-
-    **How to Use the App:**
-    1. Upload a CSV file with the required columns.
-    2. Review filtered data, flagged stocks, and sector averages.
-    3. Select a sector and analysis type (Long/Short), then set custom weights for growth metrics.
-    4. Generate scored sector data and download all outputs as needed.
-
-    ### Source Code:
-    Access the full source code for this project on GitHub:
-    [AutomatedStockScreen GitHub Repository](https://github.com/IdoK83/AutomatedStockScreen)
-    """)
 
 # Streamlit app layout
 st.title("Stock Data Processor & Sector Analysis Tool")
 
 # Display the instructions at the top of the page
 display_instructions()
+
 uploaded_file = st.file_uploader("Upload a CSV file", type="csv")
 
 if uploaded_file:
