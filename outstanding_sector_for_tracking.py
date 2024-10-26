@@ -63,18 +63,23 @@ def calc_growth(fiscal0, fiscal1):
         return fiscal1 / fiscal0 - 1
 
 
-def filter_outliers_and_flagged(df):
-    """Filters out flagged values and outliers based on z-scores."""
-    # Remove flagged values (99 and -99)
-    df = df[~df[NUMERIC_COLUMNS].isin([99, -99]).any(axis=1)]
+def filter_stocks(df):
+    """Separates valid stocks and flagged stocks (99 and -99) for independent analysis."""
+    # Filter out flagged stocks
+    valid_stocks = df[~df[NUMERIC_COLUMNS].isin([99, -99]).any(axis=1)]
+    flagged_stocks = df[df[NUMERIC_COLUMNS].isin([99, -99]).any(axis=1)]
 
-    # Calculate z-scores for each numeric column
+    return valid_stocks, flagged_stocks
+
+
+def apply_z_score_filter(df):
+    """Filters out extreme outliers based on z-scores for valid stocks."""
     for column in NUMERIC_COLUMNS:
         median = df[column].median()
         iqr = df[column].quantile(0.75) - df[column].quantile(0.25)
         df[f'{column}_zscore'] = (df[column] - median) / iqr
 
-    # Filter out rows where z-score > 3
+    # Filter out rows where z-score is greater than 3 in absolute value
     filtered_df = df[
         (df['SG-F1_zscore'].abs() <= 3) &
         (df['EG-F1_zscore'].abs() <= 3) &
@@ -85,29 +90,57 @@ def filter_outliers_and_flagged(df):
     return filtered_df.drop(columns=[f'{col}_zscore' for col in NUMERIC_COLUMNS])
 
 
-def filter_stocks(df):
-    """Filters out irrelevant exchanges and cleans numeric columns."""
-    df = df[df['Exchange'].isin(RELEVANT_EXCHANGES)]
-    df[NUMERIC_COLUMNS] = df[NUMERIC_COLUMNS].apply(clean_percentage_column)
-    df = df.dropna(subset=NUMERIC_COLUMNS)
-    return df
-
-
 def calculate_sector_averages(valid_stocks):
     """Calculates sector averages from valid stocks, excluding flagged values and outliers."""
     return valid_stocks.groupby('Sector')[NUMERIC_COLUMNS].mean().reset_index()
+
+
+# Weighted Scoring Function
+def calculate_weighted_score(row, weights):
+    """Calculates a weighted score for a stock."""
+    return (weights['SG'] * row['SG-F1'] +
+            weights['EGF1'] * row['EG-F1'] +
+            weights['EGF2'] * row['EG-F2'])
+
+
+def score_sector_stocks(filtered_df, sector, weights, ascending=False):
+    """Scores stocks within the selected sector based on the weighted score."""
+    # Filter for the selected sector
+    sector_data = filtered_df[filtered_df['Sector'] == sector]
+    if len(sector_data) == 0:
+        st.warning(f"No stocks found in the {sector} sector.")
+        return pd.DataFrame()
+
+    # Calculate the weighted score for each stock
+    sector_data['WeightedScore'] = sector_data.apply(
+        lambda row: (
+                weights['SG'] * row['SG-F1'] +
+                weights['EGF1'] * row['EG-F1'] +
+                weights['EGF2'] * row['EG-F2']
+        ), axis=1
+    )
+
+    # Sort by WeightedScore in either ascending or descending order
+    sector_data = sector_data.sort_values('WeightedScore', ascending=ascending)
+
+    # Add ranking column based on score order
+    sector_data['Rank'] = range(1, len(sector_data) + 1)
+
+    return sector_data
 
 
 # Main processing function
 def process_stock_data(df):
     df = calculate_growth_metrics(df)
     if df is None:
-        return None, None
+        return None, None, None
 
-    df = filter_stocks(df)
-    df_filtered = filter_outliers_and_flagged(df)  # Filter out flagged values and outliers
-    sector_averages = calculate_sector_averages(df_filtered)  # Calculate sector averages on filtered data
-    return df_filtered, sector_averages
+    # Separate valid and flagged stocks
+    valid_stocks, flagged_stocks = filter_stocks(df)
+    valid_stocks = apply_z_score_filter(valid_stocks)  # Apply z-score filtering to remove outliers
+    sector_averages = calculate_sector_averages(
+        valid_stocks)  # Calculate sector averages based on z-score filtered stocks
+    return valid_stocks, flagged_stocks, sector_averages
 
 
 # Streamlit UI Components
@@ -120,14 +153,25 @@ if uploaded_file:
     st.write("Original Data", df)
 
     # Process and display data
-    all_valid_stocks, sector_averages = process_stock_data(df)
+    valid_stocks, flagged_stocks, sector_averages = process_stock_data(df)
 
-    if all_valid_stocks is not None:
-        st.write("Sector Averages (Excluding Outliers)", sector_averages.style.format({
+    if valid_stocks is not None:
+        # Display and download the sector averages and filtered stocks
+        st.write("Sector Averages (Excluding Outliers and Flags)", sector_averages.style.format({
             'SG-F1': "{:.2%}", 'EG-F1': "{:.2%}", 'EG-F2': "{:.2%}"
         }))
+        st.write("Valid Stocks", valid_stocks)
+        st.write("Flagged Stocks (99, -99 values)", flagged_stocks)
 
-        # Explanation and sector selection
+        # Download buttons for CSV outputs
+        st.download_button("Download Valid Stocks CSV", valid_stocks.to_csv(index=False), "valid_stocks.csv",
+                           mime="text/csv")
+        st.download_button("Download Flagged Stocks CSV", flagged_stocks.to_csv(index=False), "flagged_stocks.csv",
+                           mime="text/csv")
+        st.download_button("Download Sector Averages CSV", sector_averages.to_csv(index=False), "sector_averages.csv",
+                           mime="text/csv")
+
+        # Explanation and sector selection for scoring
         st.markdown("""
         ### Sector Analysis
         - Based on the calculated sector averages, identify a sector you'd like to analyze.
@@ -153,7 +197,7 @@ if uploaded_file:
         ascending = True if analysis_type == 'Short' else False
 
         if st.button("Analyze Sector"):
-            scored_stocks = score_sector_stocks(all_valid_stocks, selected_sector, weights, ascending)
+            scored_stocks = score_sector_stocks(valid_stocks, selected_sector, weights, ascending)
             if not scored_stocks.empty:
                 st.write("Scored Stocks", scored_stocks.style.format({
                     'SG-F1': "{:.2%}", 'EG-F1': "{:.2%}", 'EG-F2': "{:.2%}", 'WeightedScore': "{:.2f}"
