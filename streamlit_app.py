@@ -70,4 +70,9 @@ if uploaded_file:
                  scored_stocks.style.format({'SG-F1': "{:.2%}", 'EG-F1': "{:.2%}", 'EG-F2': "{:.2%}"}))
     else:
         # Score stocks by momentum score
-        scored_stocks = score_sector_stocks(valid_st
+        scored_stocks = score_sector_stocks(valid_stocks_for_momentum, selected_sector, weights={},
+                                            metric='MomentumScore', ascending=False)
+        st.write("Scored Stocks by Momentum Score", scored_stocks)
+
+    # Download button for analyzed sector stocks
+    st.download_button("Download Sector Analysis CSV", scored_stocks.to_csv(index=False), "scored_sector_stocks.csv")
