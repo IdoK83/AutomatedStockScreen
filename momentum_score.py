@@ -20,3 +20,17 @@ def calculate_momentum_score(df, weights=None):
         weights['YTD'] * df['% Price Change (YTD)']
     )
     return df
+
+def apply_z_score_filter_momentum(df):
+    """Filters out extreme outliers based on z-scores for MomentumScore."""
+    median = df['MomentumScore'].median()
+    iqr = df['MomentumScore'].quantile(0.75) - df['MomentumScore'].quantile(0.25)
+    df['MomentumScore_zscore'] = (df['MomentumScore'] - median) / iqr
+
+    # Filter out rows where z-score is greater than 3 in absolute value
+    filtered_df = df[df['MomentumScore_zscore'].abs() <= 3]
+    return filtered_df.drop(columns=['MomentumScore_zscore'])
+
+def calculate_sector_momentum_averages(valid_stocks):
+    """Calculates average MomentumScore by sector, excluding outliers."""
+    return valid_stocks.groupby('Sector')['MomentumScore'].mean().reset_index()
