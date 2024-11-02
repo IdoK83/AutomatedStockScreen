@@ -5,9 +5,9 @@ from momentum_score import calculate_momentum_score, apply_z_score_filter_moment
 from sector_analysis import score_sector_stocks
 from utils import validate_columns
 
+# Display instructions at the start
 def display_instructions():
     st.subheader("Instructions for Use")
-
     st.markdown("""
     ### Welcome to the Stock Data Processor & Sector Analysis Tool!
 
@@ -30,15 +30,14 @@ def display_instructions():
 
     **How to Use the App:**
     1. Upload a CSV file with the required columns.
-    2. Review filtered data, flagged stocks, and sector averages.
-    3. Select a sector and analysis type (Growth or Momentum), then set custom weights if needed.
-    4. Generate scored sector data and download all outputs as needed.
+    2. Select either Growth Estimates Analysis or Momentum Analysis.
+    3. Configure settings and generate sector analysis based on your chosen method.
+    4. Download all outputs as needed.
 
     ### Source Code:
     Access the full source code for this project on GitHub:
     [AutomatedStockScreen GitHub Repository](https://github.com/IdoK83/AutomatedStockScreen)
     """)
-
 
 st.title("Stock Data Processor & Sector Analysis Tool")
 display_instructions()
@@ -57,49 +56,78 @@ if uploaded_file:
         st.error(str(e))
         st.stop()
 
-    # Calculate growth metrics and momentum score independently
-    df_growth = calculate_growth_metrics(df.copy())
+    # Analysis selection: Growth Estimates or Momentum
+    analysis_type = st.radio("Choose Analysis Type", ["Growth Estimates Analysis", "Momentum Analysis"])
 
-    # Custom weight sliders for momentum score calculation
-    st.subheader("Set Custom Weights for Momentum Score Calculation")
-    weight_1_week = st.slider("Weight for 1 Week Change", 0.0, 1.0, 0.25)
-    weight_4_weeks = st.slider("Weight for 4 Weeks Change", 0.0, 1.0, 0.25)
-    weight_12_weeks = st.slider("Weight for 12 Weeks Change", 0.0, 1.0, 0.25)
-    weight_ytd = st.slider("Weight for YTD Change", 0.0, 1.0, 0.25)
+    if analysis_type == "Growth Estimates Analysis":
+        # Process growth metrics
+        df_growth = calculate_growth_metrics(df.copy())
+        all_valid_stocks, flagged_stocks = filter_stocks(df_growth)
+        valid_stocks_for_averages = apply_z_score_filter(all_valid_stocks)
+        sector_growth_averages = calculate_sector_averages(valid_stocks_for_averages)
 
-    # Normalize weights to ensure they sum to 1
-    total_weight = weight_1_week + weight_4_weeks + weight_12_weeks + weight_ytd
-    if total_weight != 1.0:
-        weight_1_week, weight_4_weeks, weight_12_weeks, weight_ytd = (
-            weight_1_week / total_weight, weight_4_weeks / total_weight,
-            weight_12_weeks / total_weight, weight_ytd / total_weight
-        )
+        # Display sector growth averages, formatted as percentages for growth metrics
+        st.write("Sector Growth Averages (Excluding Outliers and Flags)", sector_growth_averages.style.format({
+            'SG-F1': "{:.2%}", 'EG-F1': "{:.2%}", 'EG-F2': "{:.2%}"
+        }))
 
-    # Create weights dictionary to pass to calculate_momentum_score
-    momentum_weights = {
-        '1 Week': weight_1_week,
-        '4 Weeks': weight_4_weeks,
-        '12 Weeks': weight_12_weeks,
-        'YTD': weight_ytd
-    }
+        # Download options for growth analysis results
+        st.write("Valid Stocks", all_valid_stocks)
+        st.write("Flagged Stocks (99, -99 values)", flagged_stocks)
+        st.download_button("Download Valid Stocks CSV", all_valid_stocks.to_csv(index=False), "valid_stocks.csv")
+        st.download_button("Download Flagged Stocks CSV", flagged_stocks.to_csv(index=False), "flagged_stocks.csv")
+        st.download_button("Download Sector Growth Averages CSV", sector_growth_averages.to_csv(index=False), "sector_growth_averages.csv")
 
-    # Calculate momentum score with user-defined weights
-    df_momentum = calculate_momentum_score(df.copy(), weights=momentum_weights)
+        # Custom weight sliders for growth metrics
+        st.subheader("Set Weights for Growth Metrics (Weighted Score Calculation)")
+        weight_sg = st.slider("Weight for SG-F1", 0.0, 1.0, 0.5)
+        weight_egf1 = st.slider("Weight for EG-F1", 0.0, 1.0, 0.3)
+        weight_egf2 = st.slider("Weight for EG-F2", 0.0, 1.0, 0.2)
+        growth_weights = {'SG': weight_sg, 'EGF1': weight_egf1, 'EGF2': weight_egf2}
 
-    # Filter out outliers for momentum scores and calculate sector momentum averages
-    valid_stocks_for_momentum = apply_z_score_filter_momentum(df_momentum)
-    sector_momentum_averages = calculate_sector_momentum_averages(valid_stocks_for_momentum)
+        # Sector selection and scoring based on growth metrics
+        selected_sector = st.selectbox("Choose a sector to analyze", sector_growth_averages['Sector'].unique())
+        scored_stocks = score_sector_stocks(all_valid_stocks, selected_sector, weights=growth_weights, metric='WeightedScore', ascending=False)
+        st.write("Scored Stocks by Growth Estimates", scored_stocks.style.format({
+            'SG-F1': "{:.2%}", 'EG-F1': "{:.2%}", 'EG-F2': "{:.2%}", 'WeightedScore': "{:.2f}"
+        }))
+        st.download_button("Download Sector Analysis CSV", scored_stocks.to_csv(index=False), "scored_sector_stocks_growth.csv")
 
-    # Display and allow download of sector momentum averages
-    st.write("Sector Momentum Averages (Excluding Outliers)", sector_momentum_averages)
-    st.download_button("Download Sector Momentum Averages CSV", sector_momentum_averages.to_csv(index=False),
-                       "sector_momentum_averages.csv")
+    elif analysis_type == "Momentum Analysis":
+        # Custom weight sliders for momentum score calculation
+        st.subheader("Set Custom Weights for Momentum Score Calculation")
+        weight_1_week = st.slider("Weight for 1 Week Change", 0.0, 1.0, 0.25)
+        weight_4_weeks = st.slider("Weight for 4 Weeks Change", 0.0, 1.0, 0.25)
+        weight_12_weeks = st.slider("Weight for 12 Weeks Change", 0.0, 1.0, 0.25)
+        weight_ytd = st.slider("Weight for YTD Change", 0.0, 1.0, 0.25)
 
-    # Sector analysis options for momentum
-    selected_sector = st.selectbox("Choose a sector to analyze", sector_momentum_averages['Sector'].unique())
-    scored_stocks = score_sector_stocks(valid_stocks_for_momentum, selected_sector, weights={}, metric='MomentumScore',
-                                        ascending=False)
+        # Normalize weights to ensure they sum to 1
+        total_weight = weight_1_week + weight_4_weeks + weight_12_weeks + weight_ytd
+        if total_weight != 1.0:
+            weight_1_week, weight_4_weeks, weight_12_weeks, weight_ytd = (
+                weight_1_week / total_weight, weight_4_weeks / total_weight,
+                weight_12_weeks / total_weight, weight_ytd / total_weight
+            )
 
-    # Display and download scored stocks for the selected sector
-    st.write("Scored Stocks by Momentum Score", scored_stocks)
-    st.download_button("Download Sector Analysis CSV", scored_stocks.to_csv(index=False), "scored_sector_stocks.csv")
+        # Create weights dictionary for momentum calculation
+        momentum_weights = {
+            '1 Week': weight_1_week,
+            '4 Weeks': weight_4_weeks,
+            '12 Weeks': weight_12_weeks,
+            'YTD': weight_ytd
+        }
+
+        # Calculate and filter momentum scores
+        df_momentum = calculate_momentum_score(df.copy(), weights=momentum_weights)
+        valid_stocks_for_momentum = apply_z_score_filter_momentum(df_momentum)
+        sector_momentum_averages = calculate_sector_momentum_averages(valid_stocks_for_momentum)
+
+        # Display sector momentum averages and download options
+        st.write("Sector Momentum Averages (Excluding Outliers)", sector_momentum_averages)
+        st.download_button("Download Sector Momentum Averages CSV", sector_momentum_averages.to_csv(index=False), "sector_momentum_averages.csv")
+
+        # Sector selection and scoring based on momentum scores
+        selected_sector = st.selectbox("Choose a sector to analyze", sector_momentum_averages['Sector'].unique())
+        scored_stocks = score_sector_stocks(valid_stocks_for_momentum, selected_sector, weights={}, metric='MomentumScore', ascending=False)
+        st.write("Scored Stocks by Momentum Score", scored_stocks)
+        st.download_button("Download Sector Analysis CSV", scored_stocks.to_csv(index=False), "scored_sector_stocks_momentum.csv")
