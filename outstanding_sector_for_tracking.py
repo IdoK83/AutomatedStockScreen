@@ -170,7 +170,6 @@ def score_sector_stocks(filtered_df, sector, weights, ascending=False):
     return sector_data
 
 
-# Main processing function
 def process_stock_data(df):
     df = filter_by_exchange(df)  # Only keep stocks from required exchanges
     df = calculate_growth_metrics(df)
@@ -178,11 +177,12 @@ def process_stock_data(df):
         return None, None, None
 
     # Separate valid and flagged stocks
-    valid_stocks, flagged_stocks = filter_stocks(df)
-    valid_stocks = apply_z_score_filter(valid_stocks)  # Apply z-score filtering to remove outliers
-    sector_averages = calculate_sector_averages(
-        valid_stocks)  # Calculate sector averages based on z-score filtered stocks
-    return valid_stocks, flagged_stocks, sector_averages
+    all_valid_stocks, flagged_stocks = filter_stocks(df)
+    valid_stocks_for_averages = apply_z_score_filter(
+        all_valid_stocks)  # Apply z-score filtering only for sector averages
+    sector_averages = calculate_sector_averages(valid_stocks_for_averages)
+
+    return all_valid_stocks, flagged_stocks, sector_averages
 
 
 # Streamlit app layout
