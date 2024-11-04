@@ -130,8 +130,9 @@ if uploaded_file:
         valid_stocks_for_momentum = apply_z_score_filter_momentum(df_momentum)
         sector_momentum_averages = calculate_sector_momentum_averages(valid_stocks_for_momentum)
 
-        # Display sector momentum averages and download options
-        st.write("Sector Momentum Averages (Excluding Outliers)", sector_momentum_averages)
+        # Sort and display sector momentum averages
+        sector_momentum_averages = sector_momentum_averages.sort_values(by='MomentumScore', ascending=False)
+        st.write("Sector Momentum Averages (Sorted by Momentum Score, Excluding Outliers)", sector_momentum_averages)
         st.download_button("Download Sector Momentum Averages CSV", sector_momentum_averages.to_csv(index=False), "sector_momentum_averages.csv")
 
         # Sector selection and scoring based on momentum scores
