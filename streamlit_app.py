@@ -5,7 +5,9 @@ from momentum_score import calculate_momentum_score, apply_z_score_filter_moment
 from sector_analysis import score_sector_stocks
 from utils import validate_columns
 
-# Display instructions at the start
+# Configuration
+RELEVANT_EXCHANGES = ['NSDQ', 'NYSE']  # Only allow these exchanges
+
 def display_instructions():
     st.subheader("Instructions for Use")
     st.markdown("""
@@ -54,6 +56,12 @@ if uploaded_file:
         validate_columns(df)
     except ValueError as e:
         st.error(str(e))
+        st.stop()
+
+    # Filter by relevant exchanges before processing
+    df = df[df['Exchange'].isin(RELEVANT_EXCHANGES)]
+    if df.empty:
+        st.error("No stocks from the relevant exchanges found.")
         st.stop()
 
     # Analysis selection: Growth Estimates or Momentum
