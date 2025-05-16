@@ -3,7 +3,7 @@ import pandas as pd
 from growth_estimates import calculate_growth_metrics, filter_stocks, apply_z_score_filter, calculate_sector_averages
 from momentum_score import calculate_momentum_score, apply_z_score_filter_momentum, calculate_sector_momentum_averages
 from sector_analysis import score_sector_stocks
-from utils import validate_columns
+from utils import validate_columns, remove_spam_columns
 
 # Configuration
 RELEVANT_EXCHANGES = ['NSDQ', 'NYSE']  # Only allow these exchanges
@@ -64,12 +64,14 @@ if uploaded_file:
         st.error("No stocks from the relevant exchanges found.")
         st.stop()
 
+    df_clean = remove_spam_columns(df)
+
     # Analysis selection: Growth Estimates or Momentum
     analysis_type = st.radio("Choose Analysis Type", ["Growth Estimates Analysis", "Momentum Analysis"])
 
     if analysis_type == "Growth Estimates Analysis":
         # Process growth metrics
-        df_growth = calculate_growth_metrics(df.copy())
+        df_growth = calculate_growth_metrics(df_clean.copy())
         all_valid_stocks, flagged_stocks = filter_stocks(df_growth)
         valid_stocks_for_averages = apply_z_score_filter(all_valid_stocks)
         sector_growth_averages = calculate_sector_averages(valid_stocks_for_averages)
